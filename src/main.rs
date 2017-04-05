@@ -20,6 +20,7 @@ use std::iter;
 use std::env;
 use std::io::{Error, ErrorKind, BufReader};
 use std::io;
+use std::net::Shutdown;
 
 use futures::{Future, Stream, Sink};
 
@@ -80,56 +81,71 @@ fn main() {
 
     let connections : Rc<RefCell<HashMap<std::net::SocketAddr, UnboundedSender<String>>>> = Rc::new(RefCell::new(HashMap::new()));
 
+        // let (reader, writer) = socket.split();
+        // let amt = copy(reader, writer);
+        // let done = amt.then(move |result| {
+        //     match result {
+        //         Ok((amt, _, _)) => println!("wrote {} bytes to {}", amt, addr),
+        //         Err(e) => println!("error on {}: {}", addr, e),
+        //     }
+
+        //     Ok(())
+        // });
+
+
     
     let srv = socket.incoming().for_each(move |(socket, addr)| {
         println!("got a connection to {:?}", addr);
-        // let transport = bind_transport(socket);
-        // let echo = transport.for_each(|buf| {
-        //     println!("we got buf -> {:?}", buf);
-        //     Ok(())
-        // });
 
         let (sink, stream) = bind_transport(socket).split();
-
         let fuckshit = stream.fold(sink, move |snk, m| {
+            println!("hey mang, I got a message -> {:?}", m);
             snk.send(m)
-        });
-        // let echo = stream.for_each(move |buf| {
-        //     println!("we got buf -> {:?}", buf);
-        //     println!("what is sink -> {:?}", sink);
-        //     // sink.send(buf)
-        //     Ok(())
-        // });
-
-
-
-        let done = fuckshit.and_then(|res| {
-            println!("ok, good or bad, we done either way -> {:?}", res);
+        }); // .map(|_|())
+        let done = fuckshit.then(move |res| {
+            println!("uhhh, what's res fucko -> {:?}", res);
             Ok(())
-        }).map_err(|_| ());
+        }); // .map_err(|_| ())
  
         handle.spawn(done);
 
         Ok(())
     });
    
-    let handle = core.handle();
-    handle.spawn(srv.map_err(|e| panic!("srv error: {}", e)));
+    
+    // handle.spawn(srv.map_err(|e| panic!("srv error: {}", e)));
 
     println!("fall through");
-    // core.run(srv).unwrap();
-    let client = TcpStream::connect(&addr, &handle);
-    let client = core.run(client).unwrap();
 
-    let (client, _) = core.run(write_all(client, frame_for("hi".into()))).unwrap();
-    let (client, _) = core.run(write_all(client, frame_for("sup mang".into()))).unwrap();
-    let (client, buf, amt) = core.run(read(client, vec![0; 1024])).unwrap();
+    use std::{thread, time};
 
-    use std::str;
+    thread::spawn(move || {
+        println!("starting client, pre sleep");
+        let hundred_millis = time::Duration::from_millis(100);
+        thread::sleep(hundred_millis);
+        println!("starting client, post sleep");
 
-    let mah_string = str::from_utf8(&buf[..20]).unwrap();
+        let mut core = Core::new().unwrap();
+        let handle = core.handle();
+        // some work here
+        let client = TcpStream::connect(&addr, &handle);
+        let client = core.run(client).unwrap();
 
-    println!("mah string -> {:?}", mah_string);
+        let (client, _) = core.run(write_all(client, frame_for("hi".into()))).unwrap();
+        let (client, _) = core.run(write_all(client, frame_for("sup mang".into()))).unwrap();
+        let (client, buf, amt) = core.run(read(client, vec![0; 1024])).unwrap();
+        client.shutdown(Shutdown::Write).unwrap();
+        use std::str;
+
+        let mah_string = str::from_utf8(&buf[..20]).unwrap();
+        println!("client done -> {:?}", mah_string);
+    });
+
+    println!("pre server");
+    core.run(srv).unwrap();
+    println!("post server")
+    
+
 
     // handle.spawn(srv.map_err(|e| panic!("srv error: {}", e)));
 }
