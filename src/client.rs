@@ -2,6 +2,20 @@
 use tokio_core::reactor::Core;
 use tokio_core::net::{TcpStream};
 
+// use futures::sync::mpsc::Unvou
+
+#[derive(Clone)]
+pub struct ClientHandle { // <SE, CE>
+    // pub sender: std::sync::mpsc::Receiver<Client<SE, CE>>, // how the tcp server sends event to the server loop
+}
+
+#[derive(Debug, Clone)]
+pub enum ClientEvent<CE> {
+    ServerConnected,
+    ServerMessage { event: CE },
+    ServerDisconnected,
+}
+
 fn run_client() {
 	use std::{thread, time};
 

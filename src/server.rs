@@ -4,6 +4,8 @@ use super::*;
 
 use std::net::SocketAddr;
 
+use std::sync::mpsc::Sender;
+
 use serde::{Deserialize, Serialize};
 
 use futures::sync::mpsc::{UnboundedSender};
@@ -25,7 +27,7 @@ use bytes::{BytesMut};
 // we could in theory hand one of these directly to the client ...
 #[derive(Clone)]
 pub struct ServerHandle<SE, CE> {
-    pub sender: UnboundedSender<ServerEvent<SE, CE>>, // how the tcp server sends event to the server loop
+    pub sender: std::sync::mpsc::Sender<ServerEvent<SE, CE>>, // how the tcp server sends event to the server loop
 }
 
 pub struct ServerPoisonPill {
@@ -56,7 +58,9 @@ pub fn run_server<SE, CE>(server_handle:ServerHandle<SE, CE>, bind_address: Sock
     let (poison_sender, poison_receiver) = oneshot::channel();
     
     let join_handle = thread::spawn(move || {
+        println!("tcp server starting");
         create_server(server_handle, bind_address, poison_receiver);
+        println!("tcp server over");
         12
     });
 
@@ -83,14 +87,15 @@ pub fn create_server<SE, CE>(server_handle:ServerHandle<SE, CE>, bind_address: S
         let (sink, stream) = bind_transport(socket).split();
 
         // use the raw send
-        UnboundedSender::<ServerEvent<SE, CE>>::send(&hhrrrm.sender, ServerEvent::ClientConnected { address : addr, client_sender : client_send }).unwrap();
+        hhrrrm.sender.send(ServerEvent::ClientConnected { address : addr, client_sender : client_send }).unwrap();
+        
 
         let socket_reader = stream.for_each(move |m| {
             println!("hey mang, I got a message -> {:?}", m);
 
             if let Some(as_str) = std::str::from_utf8(&m).ok() {
                  match serde_json::from_str::<SE>(as_str) {
-                    Ok(event) => UnboundedSender::<ServerEvent<SE, CE>>::send(&hhrrrm.sender, ServerEvent::ClientMessage { address : addr, event : event }).unwrap(),
+                    Ok(event) => hhrrrm.sender.send(ServerEvent::ClientMessage { address : addr, event : event }).unwrap(),
                     Err(e) => println!("couldnt deserialize event ... error -> {:?} string -> {} ", e, as_str),
                  }
             } else {
@@ -113,7 +118,7 @@ pub fn create_server<SE, CE>(server_handle:ServerHandle<SE, CE>, bind_address: S
         handle.spawn(connection.then(move |_| {
             // connections.borrow_mut().remove(&addr);
             println!("Connection {} closed.", addr);
-            UnboundedSender::<ServerEvent<SE, CE>>::send(&other_handle.sender, ServerEvent::ClientDisconnected { address : addr }).unwrap();
+            &other_handle.sender.send(ServerEvent::ClientDisconnected { address : addr }).unwrap();
             Ok(())
         }));
         
