@@ -26,6 +26,7 @@ mod tests {
 
 use std::io;
 
+#[derive(Debug)]
 pub enum PsykError {
 	IO(io::Error)
 }

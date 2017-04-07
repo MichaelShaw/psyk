@@ -6,20 +6,20 @@ use std::net::SocketAddr;
 
 use serde::{Deserialize, Serialize};
 
-use futures::sync::mpsc::{UnboundedSender, UnboundedReceiver};
+use futures::sync::mpsc::{UnboundedSender};
 use futures::sync::oneshot;
 use futures::{Stream, Sink, Future};
 
-use tokio_io::io;
+// use tokio_io::io;
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_io::codec::length_delimited;
 
-use tokio_core::net::{TcpListener, TcpStream};
+use tokio_core::net::{TcpListener};
 use tokio_core::reactor::Core;
 
 use std::thread;
 
-use bytes::{BytesMut, BufMut, Bytes};
+use bytes::{BytesMut};
 
 
 // we could in theory hand one of these directly to the client ...
@@ -32,6 +32,14 @@ pub struct ServerPoisonPill {
     pub sender : oneshot::Sender<u32>,
     pub join_handle : thread::JoinHandle<u32>,
 }
+
+impl ServerPoisonPill {
+    pub fn shutdown(self) -> std::result::Result<u32, std::boxed::Box<std::any::Any + std::marker::Send>> {
+        self.sender.send(99).unwrap();
+        self.join_handle.join()
+    }
+}
+
 
 #[derive(Debug, Clone)]
 pub enum ServerEvent<SE, CE> {
