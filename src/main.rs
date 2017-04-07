@@ -23,12 +23,12 @@ use std::io;
 use std::net::Shutdown;
 
 use futures::{Future, Stream, Sink};
-
+use futures::sync::oneshot;
 
 use tokio_core::net::{TcpListener, TcpStream};
 use tokio_core::reactor::Core;
 use tokio_io::io::write_all;
-use tokio_io::AsyncRead;
+use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_io::io::{copy, read};
 use tokio_io::codec::{Encoder, Decoder};
 
@@ -40,26 +40,8 @@ use bytes::{BytesMut, BufMut};
 use std::io::Cursor;
 
 
-enum Message {
-    Server(ServerMessage),
-    Client(ClientMessage),
-}
-
-enum ClientMessage {
-    Add(u32),
-    Subrtact(u32),
-    Multiply(u32),
-    Divide(u32),
-    Get(),
-}
-
-enum ServerMessage {
-    Ok(u32),
-    Rejected(),
-}
-
 use tokio_io::codec::length_delimited;
-use tokio_io::{AsyncWrite};
+
 
 fn bind_transport<T: AsyncRead + AsyncWrite>(io: T) -> length_delimited::Framed<T> {
     length_delimited::Framed::new(io) // by default a big endian u32 at the start
@@ -96,21 +78,39 @@ fn main() {
     
     let srv = socket.incoming().for_each(move |(socket, addr)| {
         println!("got a connection to {:?}", addr);
+        // socket = 5;
+
+        // let (writer, mut reader) = socket.split();
+
+        // let x = reader.shutdown();
+        // x = 4;
+        // let bullshit = socket.clone();
+        // socket.shutdown(Shutdown::Both);
 
         let (sink, stream) = bind_transport(socket).split();
-        let fuckshit = stream.fold(sink, move |snk, m| {
+
+        
+        // stream.shutdown();
+
+        let fuckshit = stream.fold(sink, move |mut snk, m| {
             println!("hey mang, I got a message -> {:?}", m);
+            // snk.shutdown();
+            // snk.close()
             snk.send(m)
         }); // .map(|_|())
         let done = fuckshit.then(move |res| {
             println!("uhhh, what's res fucko -> {:?}", res);
-            Ok(())
+            // Ok(())
+            Err(())
         }); // .map_err(|_| ())
  
         handle.spawn(done);
 
         Ok(())
     });
+
+
+
    
     
     // handle.spawn(srv.map_err(|e| panic!("srv error: {}", e)));
@@ -121,8 +121,7 @@ fn main() {
 
     thread::spawn(move || {
         println!("starting client, pre sleep");
-        let hundred_millis = time::Duration::from_millis(100);
-        thread::sleep(hundred_millis);
+        thread::sleep(time::Duration::from_millis(100));
         println!("starting client, post sleep");
 
         let mut core = Core::new().unwrap();
@@ -141,10 +140,31 @@ fn main() {
         println!("client done -> {:?}", mah_string);
     });
 
+    // srv = 4;
+
+    let (poison_sender, poison_receiver) = oneshot::channel::<i32>();
+
+    thread::spawn(|| {
+        println!("poisin sender about to sleep for 500ms");
+        thread::sleep(time::Duration::from_millis(500));
+        println!("done sending!");
+        poison_sender.send(12).unwrap();
+    });
+
     println!("pre server");
-    core.run(srv).unwrap();
-    println!("post server")
+    // core.run(srv).unwrap();
+
+    let without_error = srv.map_err(|_| () );
+    core.handle().spawn(without_error);
+    println!("post spawn");
+
+    core.run(poison_receiver).unwrap();
     
+    println!("post run");
+
+
+
+
 
 
     // handle.spawn(srv.map_err(|e| panic!("srv error: {}", e)));
