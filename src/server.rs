@@ -13,8 +13,8 @@ use futures::sync::oneshot;
 use futures::{Stream, Sink, Future};
 
 // use tokio_io::io;
-use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_io::codec::length_delimited;
+
+
 
 use tokio_core::net::{TcpListener};
 use tokio_core::reactor::Core;
@@ -30,19 +30,6 @@ pub struct ServerHandle<SE, CE> {
     pub sender: std::sync::mpsc::Sender<ServerEvent<SE, CE>>, // how the tcp server sends event to the server loop
 }
 
-pub struct ServerPoisonPill {
-    pub sender : oneshot::Sender<u32>,
-    pub join_handle : thread::JoinHandle<u32>,
-}
-
-impl ServerPoisonPill {
-    pub fn shutdown(self) -> std::result::Result<u32, std::boxed::Box<std::any::Any + std::marker::Send>> {
-        self.sender.send(99).unwrap();
-        self.join_handle.join()
-    }
-}
-
-
 #[derive(Debug, Clone)]
 pub enum ServerEvent<SE, CE> {
     ClientConnected { address : SocketAddr, client_sender : UnboundedSender<CE> },
@@ -50,11 +37,7 @@ pub enum ServerEvent<SE, CE> {
     ClientDisconnected { address : SocketAddr },
 }
 
-fn bind_transport<T: AsyncRead + AsyncWrite>(io: T) -> length_delimited::Framed<T> {
-    length_delimited::Framed::new(io) // by default a big endian u32 at the start
-}
-
-pub fn run_server<SE, CE>(server_handle:ServerHandle<SE, CE>, bind_address: SocketAddr) -> PsykResult<ServerPoisonPill> where SE : Deserialize + Send + Clone + 'static, CE : Serialize + Send + Clone + 'static { // spawns a server and returns a poison pill handle ... that can be used to terminate the server
+pub fn run_server<SE, CE>(server_handle:ServerHandle<SE, CE>, bind_address: SocketAddr) -> PsykResult<PoisonPill> where SE : Deserialize + Send + Clone + 'static, CE : Serialize + Send + Clone + 'static { // spawns a server and returns a poison pill handle ... that can be used to terminate the server
     let (poison_sender, poison_receiver) = oneshot::channel();
     
     let join_handle = thread::spawn(move || {
@@ -64,7 +47,7 @@ pub fn run_server<SE, CE>(server_handle:ServerHandle<SE, CE>, bind_address: Sock
         12
     });
 
-    Ok(ServerPoisonPill {
+    Ok(PoisonPill {
         sender: poison_sender,
         join_handle: join_handle,
     })

@@ -53,21 +53,26 @@ fn main() {
 
     bullshit.sender.send(psyk::server::ServerEvent::ClientMessage { address: addr, event : MathServerEvent::Get }).unwrap();
 
-
     let res = poison_pill.shutdown();
 
     println!("ok we even shutdown -> {:?}", res);
 
 
+    let (client_tx, client_rx) = mpsc::channel();
+
+    let (poison_pill, server_tx) = psyk::client::run_client::<MathServerEvent, MathClientEvent>(client_tx, addr).unwrap();
 
 
 
-// UnboundedSender::<ServerEvent<SE, CE>>::send(&hhrrrm.sender, ServerEvent::ClientConnected { address : addr, client_sender : client_send }).unwrap();
+}
 
+fn spawn_math_client(client_rx : mpsc::Receiver<psyk::client::ClientEvent<MathClientEvent>>) {
 
+    let join_handle = thread::spawn(move || {
 
+        45
+    });
 
-    // handle.spawn(srv.map_err(|e| panic!("srv error: {}", e)));
 }
 
 fn spawn_math_server() -> (ServerHandle<MathServerEvent, MathClientEvent>, JoinHandle<u32>) {
