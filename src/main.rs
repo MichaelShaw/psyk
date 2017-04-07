@@ -35,7 +35,7 @@ use tokio_io::codec::{Encoder, Decoder};
 
 use futures::stream::{self};
 
-use bytes::{BytesMut, BufMut};
+use bytes::{BytesMut, BufMut, Bytes};
 
 use std::io::Cursor;
 
