@@ -4,9 +4,10 @@ use super::*;
 
 use std::net::SocketAddr;
 
-use std::sync::mpsc::Sender;
+// use std::sync::mpsc::Sender;
 
-use serde::{Deserialize, Serialize};
+use serde::{Serialize}; // Deserialize
+use serde::de::{DeserializeOwned};
 
 use futures::sync::mpsc::{UnboundedSender};
 use futures::sync::oneshot;
@@ -26,18 +27,20 @@ use bytes::{BytesMut};
 
 // we could in theory hand one of these directly to the client ...
 #[derive(Clone)]
-pub struct ServerHandle<SE, CE> {
-    pub sender: std::sync::mpsc::Sender<ServerEvent<SE, CE>>, // how the tcp server sends event to the server loop
+pub struct ServerHandle<SIE, SOE> {
+    pub sender: std::sync::mpsc::Sender<ServerInboundEvent<SIE, SOE>>, // how the tcp server sends event to the server loop
 }
 
+
 #[derive(Debug, Clone)]
-pub enum ServerEvent<SE, CE> {
-    ClientConnected { address : SocketAddr, client_sender : UnboundedSender<CE> },
-    ClientMessage { address: SocketAddr, event: SE },
+pub enum ServerInboundEvent<SIE, SOE> {
+    ClientConnected { address : SocketAddr, client_sender : UnboundedSender<SOE> },
+    ClientMessage { address: SocketAddr, event: SIE },
     ClientDisconnected { address : SocketAddr },
 }
 
-pub fn run_server<SE, CE>(server_handle:ServerHandle<SE, CE>, bind_address: SocketAddr) -> PsykResult<PoisonPill> where SE : Deserialize + Send + Clone + 'static, CE : Serialize + Send + Clone + 'static { // spawns a server and returns a poison pill handle ... that can be used to terminate the server
+pub fn run_server<SIE, SOE>(server_handle:ServerHandle<SIE, SOE>, bind_address: SocketAddr) -> PsykResult<PoisonPill>
+     where SIE : DeserializeOwned + Send + Clone + 'static, SOE : Serialize + Send + Clone + 'static { // spawns a server and returns a poison pill handle ... that can be used to terminate the server
     let (poison_sender, poison_receiver) = oneshot::channel();
     
     let join_handle = thread::spawn(move || {
@@ -53,7 +56,8 @@ pub fn run_server<SE, CE>(server_handle:ServerHandle<SE, CE>, bind_address: Sock
     })
 }
 
-pub fn create_server<SE, CE>(server_handle:ServerHandle<SE, CE>, bind_address: SocketAddr, poison_receiver: oneshot::Receiver<u32>) where SE : Deserialize + 'static + Clone, CE : Serialize + 'static + Clone {
+pub fn create_server<SIE, SOE>(server_handle:ServerHandle<SIE, SOE>, bind_address: SocketAddr, poison_receiver: oneshot::Receiver<u32>) 
+    where SIE : DeserializeOwned + 'static + Clone, SOE : Serialize + 'static + Clone {
     let mut core = Core::new().unwrap();
 
     let handle = core.handle();
@@ -70,15 +74,15 @@ pub fn create_server<SE, CE>(server_handle:ServerHandle<SE, CE>, bind_address: S
         let (sink, stream) = bind_transport(socket).split();
 
         // use the raw send
-        hhrrrm.sender.send(ServerEvent::ClientConnected { address : addr, client_sender : client_send }).unwrap();
+        hhrrrm.sender.send(ServerInboundEvent::ClientConnected { address : addr, client_sender : client_send }).unwrap();
         
 
         let socket_reader = stream.for_each(move |m| {
             println!("hey mang, I got a message -> {:?}", m);
 
             if let Some(as_str) = std::str::from_utf8(&m).ok() {
-                 match serde_json::from_str::<SE>(as_str) {
-                    Ok(event) => hhrrrm.sender.send(ServerEvent::ClientMessage { address : addr, event : event }).unwrap(),
+                 match serde_json::from_str::<SIE>(as_str) {
+                    Ok(event) => hhrrrm.sender.send(ServerInboundEvent::ClientMessage { address : addr, event : event }).unwrap(),
                     Err(e) => println!("couldnt deserialize event ... error -> {:?} string -> {} ", e, as_str),
                  }
             } else {
@@ -101,7 +105,7 @@ pub fn create_server<SE, CE>(server_handle:ServerHandle<SE, CE>, bind_address: S
         handle.spawn(connection.then(move |_| {
             // connections.borrow_mut().remove(&addr);
             println!("Connection {} closed.", addr);
-            &other_handle.sender.send(ServerEvent::ClientDisconnected { address : addr }).unwrap();
+            &other_handle.sender.send(ServerInboundEvent::ClientDisconnected { address : addr }).unwrap();
             Ok(())
         }));
         

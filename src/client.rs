@@ -4,6 +4,8 @@ use tokio_core::reactor::Core;
 use tokio_core::net::{TcpStream};
 
 use serde::{Deserialize, Serialize};
+use serde::de::DeserializeOwned;
+
 
 use std::net::SocketAddr;
 
@@ -17,21 +19,22 @@ use std::thread;
 use bytes::{BytesMut};
 
 // connected to a single client
-pub struct ChannelToServer<SE> { // <SE, CE>
-    pub sender: UnboundedSender<SE>, // how the tcp server sends event to the server loop
+pub struct ChannelToServer<COE> { // <SE, CE>
+    pub sender: UnboundedSender<COE>, // how the tcp server sends event to the server loop
 }
 
 #[derive(Debug, Clone)]
-pub enum ClientEvent<CE> {
+pub enum ClientInboundEvent<CIE> {
     ServerConnected,
-    ServerMessage { event: CE },
+    ServerMessage { event: CIE },
     ServerDisconnected,
 }
 
-pub fn run_client<SE, CE>(client_sender: Sender<ClientEvent<CE>>, server_address:SocketAddr) -> PsykResult<(PoisonPill, UnboundedSender<SE>)> where SE : Serialize + Send + Clone + 'static, CE : Deserialize + Send + Clone + 'static {
+pub fn run_client<COE, CIE>(client_sender: Sender<ClientInboundEvent<CIE>>, server_address:SocketAddr) -> PsykResult<(PoisonPill, UnboundedSender<COE>)> 
+        where COE : Serialize + Send + Clone + 'static, CIE : DeserializeOwned + Send + Clone + 'static {
     let (poison_sender, poison_receiver) = oneshot::channel();
 
-    let (server_tx, server_rx) = futures::sync::mpsc::unbounded::<SE>();
+    let (server_tx, server_rx) = futures::sync::mpsc::unbounded::<COE>();
 
     let join_handle = thread::spawn(move || {
         println!("tcp server starting");
@@ -48,7 +51,8 @@ pub fn run_client<SE, CE>(client_sender: Sender<ClientEvent<CE>>, server_address
     }, server_tx))
 }
 
-fn connect_client_to<SE, CE>(client_sender: Sender<ClientEvent<CE>>, server_rx:UnboundedReceiver<SE>, server_address:SocketAddr, poison_receiver: oneshot::Receiver<u32>) where SE : Serialize + Send + Clone + 'static, CE : Deserialize + Send + Clone + 'static {
+fn connect_client_to<COE, CIE>(client_sender: Sender<ClientInboundEvent<CIE>>, server_rx:UnboundedReceiver<COE>, server_address:SocketAddr, poison_receiver: oneshot::Receiver<u32>) 
+        where COE : Serialize + Send + Clone + 'static, CIE : DeserializeOwned + Send + Clone + 'static {
     let mut core = Core::new().unwrap();
     let handle = core.handle();
     let tcp = TcpStream::connect(&server_address, &handle);
@@ -59,14 +63,14 @@ fn connect_client_to<SE, CE>(client_sender: Sender<ClientEvent<CE>>, server_rx:U
     let client = tcp.and_then(move |stream| {
         let (sink, stream) = bind_transport(stream).split();
 
-        client_sender.send(ClientEvent::ServerConnected).unwrap();
+        client_sender.send(ClientInboundEvent::ServerConnected).unwrap();
 
         let client_copy = client_sender.clone();
 
         let socket_reader = stream.for_each(move |m| {
             if let Some(as_str) = std::str::from_utf8(&m).ok() {
-                 match serde_json::from_str::<CE>(as_str) {
-                    Ok(event) => client_sender.send(ClientEvent::ServerMessage { event : event }).unwrap(),
+                 match serde_json::from_str::<CIE>(as_str) {
+                    Ok(event) => client_sender.send(ClientInboundEvent::ServerMessage { event : event }).unwrap(),
                     Err(e) => println!("couldnt deserialize event ... error -> {:?} string -> {} ", e, as_str),
                  }
             } else {
@@ -90,7 +94,7 @@ fn connect_client_to<SE, CE>(client_sender: Sender<ClientEvent<CE>>, server_rx:U
         handle.spawn(connection.then(move |_| {
             // connections.borrow_mut().remove(&addr);
             println!("Connection {} close to server.", server_address);
-            client_copy.send(ClientEvent::ServerDisconnected).unwrap();
+            client_copy.send(ClientInboundEvent::ServerDisconnected).unwrap();
             Ok(())
         }));
 
@@ -105,6 +109,7 @@ fn connect_client_to<SE, CE>(client_sender: Sender<ClientEvent<CE>>, server_rx:U
 
     core.run(poison_receiver).unwrap();
 }
+
 
 
 // fn run_client() {

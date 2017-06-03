@@ -7,6 +7,7 @@ extern crate serde_json;
 extern crate serde_derive;
 
 
+
 extern crate bytes;
 extern crate futures;
 #[macro_use]
@@ -44,14 +45,15 @@ fn main() {
 
     let (server_handle, join_handle) = spawn_math_server();
 
-    let bullshit = server_handle.clone();
+    let server = server_handle.clone();
+
 
 
     let poison_pill = psyk::server::run_server(server_handle, addr).unwrap();
 
     println!("alright, server started, sending the damn thing");
 
-    bullshit.sender.send(psyk::server::ServerEvent::ClientMessage { address: addr, event : MathServerEvent::Get }).unwrap();
+    server.sender.send(psyk::server::ServerInboundEvent::ClientMessage { address: addr, event : MathServerEvent::Get }).unwrap();
 
     let res = poison_pill.shutdown();
 
@@ -66,7 +68,7 @@ fn main() {
 
 }
 
-fn spawn_math_client(client_rx : mpsc::Receiver<psyk::client::ClientEvent<MathClientEvent>>) {
+fn spawn_math_client(client_rx : mpsc::Receiver<psyk::client::ClientInboundEvent<MathClientEvent>>) {
 
     let join_handle = thread::spawn(move || {
 
@@ -87,7 +89,7 @@ fn spawn_math_server() -> (ServerHandle<MathServerEvent, MathClientEvent>, JoinH
 
         let mut clients = HashMap::new();
 
-        use psyk::server::ServerEvent::*;
+        use psyk::server::ServerInboundEvent::*;
         use MathServerEvent::*;
 
         loop {
