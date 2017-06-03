@@ -58,7 +58,7 @@ fn main() {
     println!("Main :: Server TCPListener Started");
     thread::sleep(time::Duration::from_millis(100));
 
-    let client_count = 1;
+    let client_count = 10;
     let client_handles : Vec<_> = (0..client_count).map(|n|{ 
         spawn_math_client(addr, n)
     }).collect();
