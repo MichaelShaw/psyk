@@ -30,12 +30,6 @@ pub struct ChannelToServer<COE> { // <SE, CE>
 }
 
 #[derive(Debug, Clone)]
-pub enum ClientOutboundEvent<COE> {
-    SendMessage { event: COE },
-    Shutdown,
-}
-
-#[derive(Debug, Clone)]
 pub enum ClientInboundEvent<CIE, COE> {
     // failed to connect in the first place?
     FailedToConnect { address: SocketAddr },
@@ -66,7 +60,7 @@ pub fn run_client<CIE, COE>(client_handler: ClientEventHandler<CIE, COE>, server
 
 fn connect_client_to<CIE, COE>(client_handler: ClientEventHandler<CIE, COE>, server_address:SocketAddr, poison_receiver: oneshot::Receiver<u32>) 
         where CIE : DeserializeOwned + Send + Clone + Debug + 'static, COE : Serialize + Send + Clone + Debug + 'static {
-    let mut core = Core::new().unwrap();
+    let mut core = Core::new().expect("TCPCLIENT A NEW CORE");
     let handle = core.handle();
     let tcp = TcpStream::connect(&server_address, &handle);
 
@@ -79,14 +73,14 @@ fn connect_client_to<CIE, COE>(client_handler: ClientEventHandler<CIE, COE>, ser
 
         let (to_server_tx, to_server_rx) = futures::sync::mpsc::unbounded::<COE>();
         let channel_to_server = ChannelToServer { sender: to_server_tx };
-        client_copy.sender.send(ClientInboundEvent::ServerConnected { address: server_address, channel_to_server: channel_to_server }).unwrap();
+        client_copy.sender.send(ClientInboundEvent::ServerConnected { address: server_address, channel_to_server: channel_to_server }).expect("TCPCLIENT SENDS SERVERCONNECTED");
 
         let socket_reader = stream.for_each(move |m| {
             if let Some(as_str) = std::str::from_utf8(&m).ok() {
                  match serde_json::from_str::<CIE>(as_str) {
                     Ok(event) => {
                         println!("TCPClient :: received event {:?}", event);
-                        client_handler.sender.send(ClientInboundEvent::ServerMessage { address: server_address, event : event }).unwrap();
+                        client_handler.sender.send(ClientInboundEvent::ServerMessage { address: server_address, event : event }).expect("TCPCLIENT SENDS SERVERMESSAGE");
                     },
                     Err(e) => println!("TCPClient :: couldnt deserialize event ... error -> {:?} string -> {} ", e, as_str),
                  }
@@ -99,7 +93,7 @@ fn connect_client_to<CIE, COE>(client_handler: ClientEventHandler<CIE, COE>, ser
 
         let socket_writer = to_server_rx.fold(sink, |sink, msg| {
             println!("TCPClient :: writing an outbound event for the server!");
-            let msg = serde_json::to_string(&msg).unwrap();
+            let msg = serde_json::to_string(&msg).expect("TCPCLIENT DESER OF INBOUND EVENT");
             let some_bytes : BytesMut = BytesMut::from(msg);
             let amt = sink.send(some_bytes);
             amt.map_err(|_| ())
@@ -111,7 +105,7 @@ fn connect_client_to<CIE, COE>(client_handler: ClientEventHandler<CIE, COE>, ser
         handle.spawn(connection.then(move |_| {
             // connections.borrow_mut().remove(&addr);
             println!("TcpClient :: Connection {} close to server.", server_address);
-            client_copy.sender.send(ClientInboundEvent::ServerDisconnected { address: server_address } ).unwrap();
+            client_copy.sender.send(ClientInboundEvent::ServerDisconnected { address: server_address } ).expect("TCPCLIENT SENDS SERVERDISCONNECT");
             Ok(())
         }));
 
@@ -122,7 +116,7 @@ fn connect_client_to<CIE, COE>(client_handler: ClientEventHandler<CIE, COE>, ser
 
     core.handle().spawn(without_error);
 
-    core.run(poison_receiver).unwrap();
+    core.run(poison_receiver).expect("TCPCLIENT RUN");
 
-    client_handler_copy.sender.send(ClientInboundEvent::ClientFinished { address: server_address });
+    client_handler_copy.sender.send(ClientInboundEvent::ClientFinished { address: server_address }).expect("TCPCLIENT CLIENTFINISHED SEND");
 }
