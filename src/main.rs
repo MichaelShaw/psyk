@@ -54,7 +54,7 @@ fn main() {
     println!("Main :: Server TCPListener Started");
     thread::sleep(time::Duration::from_millis(100));
 
-    let client_count = 100;
+    let client_count = 10;
     let client_handles : Vec<_> = (0..client_count).map(|n|{ 
         spawn_math_client(addr, n)
     }).collect();
@@ -111,7 +111,7 @@ fn spawn_math_client(server_address: SocketAddr, n: u32) -> (ClientEventHandler<
                         ServerConnected { address, channel_to_server } => {
                             println!("Client {} :: connected to server @ {:?}", n, address);
                             // psyk::client::ClientOutboundEvent::SendMessage { event: MathToServerEvent::Get }
-                            channel_to_server.sender.send(MathToServerEvent::Add(1));
+                            channel_to_server.sender.send(MathToServerEvent::Add(n));
 
                             println!("Client {} :: Sending get", n);
                             to_server = Some(channel_to_server)
