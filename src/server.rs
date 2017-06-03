@@ -34,10 +34,10 @@ pub struct ServerEventHandler<SIE, SOE> { // this is a "logical" handle for the 
 
 #[derive(Debug, Clone)]
 pub enum ServerInboundEvent<SIE, SOE> {
-    FailureToBind { address : SocketAddr },
     ClientConnected { address : SocketAddr, client_sender : UnboundedSender<SOE> },
     ClientMessage { address: SocketAddr, event: SIE },
     ClientDisconnected { address : SocketAddr },
+    FailureToBind { address : SocketAddr }, // last 2 events could be combined in some form of "TCPServer finished with Result ...."
     ServerFinished { address: SocketAddr },
 }
 
@@ -62,7 +62,7 @@ pub fn run_server<SIE, SOE>(server_handler:ServerEventHandler<SIE, SOE>, bind_ad
 
 pub fn create_server<SIE, SOE>(server_handler:ServerEventHandler<SIE, SOE>, bind_address: SocketAddr, poison_receiver: oneshot::Receiver<u32>) 
     where SIE : DeserializeOwned + 'static + Clone + Debug, SOE : Serialize + 'static + Clone + Debug {
-    let mut core = Core::new().expect("TCPSERVER A NEW CORE");
+    let mut core = Core::new().expect("TCPSERVER A NEW CORE"); // io result
 
     let handle = core.handle();
     
@@ -109,13 +109,11 @@ pub fn create_server<SIE, SOE>(server_handler:ServerEventHandler<SIE, SOE>, bind
         let socket_reader = socket_reader.map_err(|_| ());
         let connection = socket_reader.map(|_| ()).select(socket_writer.map(|_| ()));
         handle.spawn(connection.then(move |_| {
-            // connections.borrow_mut().remove(&addr);
             println!("TCPServer :: Connection {} closed.", addr);
             &other_handle.sender.send(ServerInboundEvent::ClientDisconnected { address : addr }).expect("TCPSERVER SEND CLIENTDISCONNECT");
             Ok(())
         }));
         
-
         Ok(())
     });
 
