@@ -3,18 +3,18 @@ use super::*;
 use tokio_core::reactor::Core;
 use tokio_core::net::{TcpStream};
 
-use serde::{Deserialize, Serialize};
+use serde::{Serialize};
 use serde::de::DeserializeOwned;
 
 
 use std::fmt::Debug;
 use std::net::SocketAddr;
 
-use futures::sync::mpsc::{UnboundedSender, UnboundedReceiver};
+use futures::sync::mpsc::{UnboundedSender};
 use futures::sync::oneshot;
 use futures::{Future, Stream, Sink};
 
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::{Sender};
 use std::thread;
 
 use bytes::{BytesMut};
@@ -39,15 +39,15 @@ pub enum ClientInboundEvent<CIE, COE> {
     ClientFinished { address:SocketAddr }, // unsure of if we should have this one
 }
 
-pub fn run_client<CIE, COE>(client_handler: ClientEventHandler<CIE, COE>, server_address:SocketAddr) -> PsykResult<PoisonPill> 
-        where CIE : DeserializeOwned + Send + Clone + Debug + 'static, COE : Serialize + Send + Clone + Debug + 'static {
+pub fn run_client<CIE, COE, C>(client_handler: ClientEventHandler<CIE, COE>, server_address:SocketAddr) -> PsykResult<PoisonPill> 
+        where CIE : DeserializeOwned + Send + Clone + Debug + 'static, COE : Serialize + Send + Clone + Debug + 'static, C: Codec<CIE, COE> {
     let (poison_sender, poison_receiver) = oneshot::channel();
 
     let join_handle = thread::spawn(move || {
         println!("TCPClient :: starting");
         // create_server(server_handle, bind_address, poison_receiver);
 
-        connect_client_to(client_handler, server_address, poison_receiver);
+        connect_client_to::<CIE, COE, C>(client_handler, server_address, poison_receiver);
         println!("TCPClient :: finished");
         12
     });
@@ -58,8 +58,8 @@ pub fn run_client<CIE, COE>(client_handler: ClientEventHandler<CIE, COE>, server
     })
 }
 
-fn connect_client_to<CIE, COE>(client_handler: ClientEventHandler<CIE, COE>, server_address:SocketAddr, poison_receiver: oneshot::Receiver<u32>) 
-        where CIE : DeserializeOwned + Send + Clone + Debug + 'static, COE : Serialize + Send + Clone + Debug + 'static {
+fn connect_client_to<CIE, COE, C>(client_handler: ClientEventHandler<CIE, COE>, server_address:SocketAddr, poison_receiver: oneshot::Receiver<u32>) 
+        where CIE : DeserializeOwned + Send + Clone + Debug + 'static, COE : Serialize + Send + Clone + Debug + 'static, C: Codec<CIE, COE> {
     let mut core = Core::new().expect("TCPCLIENT A NEW CORE");
     let handle = core.handle();
     let tcp = TcpStream::connect(&server_address, &handle);
@@ -75,17 +75,13 @@ fn connect_client_to<CIE, COE>(client_handler: ClientEventHandler<CIE, COE>, ser
         let channel_to_server = ChannelToServer { sender: to_server_tx };
         client_copy.sender.send(ClientInboundEvent::ServerConnected { address: server_address, channel_to_server: channel_to_server }).expect("TCPCLIENT SENDS SERVERCONNECTED");
 
+
         let socket_reader = stream.for_each(move |m| {
-            if let Some(as_str) = std::str::from_utf8(&m).ok() {
-                 match serde_json::from_str::<CIE>(as_str) {
-                    Ok(event) => {
-                        println!("TCPClient :: received event {:?}", event);
-                        client_handler.sender.send(ClientInboundEvent::ServerMessage { address: server_address, event : event }).expect("TCPCLIENT SENDS SERVERMESSAGE");
-                    },
-                    Err(e) => println!("TCPClient :: couldnt deserialize event ... error -> {:?} string -> {} ", e, as_str),
-                 }
+            if let Some(ie) = C::deserialize_incoming(&m) {
+                println!("TCPClient :: received event {:?}", ie);
+                client_handler.sender.send(ClientInboundEvent::ServerMessage { address: server_address, event : ie }).expect("TCPCLIENT SENDS SERVERMESSAGE");
             } else {
-                println!("TCPClient :: couldnt create utf8 string from frame!!");
+                println!("TCPClient :: couldnt deser incoming event");
             }
 
             Ok(())
@@ -93,9 +89,11 @@ fn connect_client_to<CIE, COE>(client_handler: ClientEventHandler<CIE, COE>, ser
 
         let socket_writer = to_server_rx.fold(sink, |sink, msg| {
             println!("TCPClient :: writing an outbound event for the server!");
-            let msg = serde_json::to_string(&msg).expect("TCPCLIENT DESER OF INBOUND EVENT");
-            let some_bytes : BytesMut = BytesMut::from(msg);
+
+            let mut some_bytes : BytesMut = BytesMut::new();
+            C::serialize_outgoing(&msg, &mut some_bytes);
             let amt = sink.send(some_bytes);
+
             amt.map_err(|_| ())
         });
 

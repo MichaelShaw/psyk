@@ -24,6 +24,11 @@ pub mod client;
 
 use std::io;
 
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+
+use bytes::BufMut;
+
 #[derive(Debug)]
 pub enum PsykError {
 	IO(io::Error)
@@ -54,3 +59,32 @@ impl PoisonPill {
         self.join_handle.join()
     }
 }
+
+// this should be fallible with proper error results ... ... gotta unity various stuff :-/
+pub trait Codec<IE, OE> where OE : Serialize, IE : DeserializeOwned {
+    fn serialize_outgoing(oe: &OE, bytes: &mut bytes::BytesMut);
+    fn deserialize_incoming(bytes: &bytes::BytesMut) -> Option<IE>;
+}
+
+pub struct JsonCodec;
+impl<IE, OE> Codec<IE, OE> for JsonCodec where OE : Serialize, IE : DeserializeOwned {
+    fn serialize_outgoing(oe: &OE, bytes: &mut bytes::BytesMut) {
+        let string = serde_json::to_string(&oe).expect("JsonCodec :: TCPSERVER DESER INBOUND EVENT");
+        bytes.put(string);
+    }
+
+    fn deserialize_incoming(bytes: &bytes::BytesMut) -> Option<IE> {
+        if let Some(as_str) = std::str::from_utf8(bytes).ok() {
+            match serde_json::from_str::<IE>(as_str) {
+                Ok(incoming_event) => Some(incoming_event),
+                Err(e) => {
+                    println!("JsonCodec :: couldnt deserialize event ... error -> {:?} string -> {} ", e, as_str);
+                    None
+                },
+            }
+        } else {
+            None
+        }
+    }
+}
+

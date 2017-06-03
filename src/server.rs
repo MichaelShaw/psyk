@@ -17,6 +17,7 @@ use futures::{Stream, Sink, Future};
 use std::fmt::Debug;
 
 
+
 use tokio_core::net::{TcpListener};
 use tokio_core::reactor::Core;
 
@@ -41,15 +42,16 @@ pub enum ServerInboundEvent<SIE, SOE> {
     ServerFinished { address: SocketAddr },
 }
 
-pub fn run_server<SIE, SOE>(server_handler:ServerEventHandler<SIE, SOE>, bind_address: SocketAddr) -> PsykResult<PoisonPill>
-     where SIE : DeserializeOwned + Send + Clone + Debug + 'static, SOE : Serialize + Send + Clone + Debug + 'static { // spawns a server and returns a poison pill handle ... that can be used to terminate the server
+pub fn run_server<SIE, SOE, C>(server_handler:ServerEventHandler<SIE, SOE>, bind_address: SocketAddr) -> PsykResult<PoisonPill>
+     where SIE : DeserializeOwned + Send + Clone + Debug + 'static, SOE : Serialize + Send + Clone + Debug + 'static, C: Codec<SIE, SOE> { // spawns a server and returns a poison pill handle ... that can be used to terminate the server
     let (poison_sender, poison_receiver) = oneshot::channel();
+
 
     // what do we do if we can't bind :-/ ... send a failure to bind event
     
     let join_handle = thread::spawn(move || {
         println!("TCPServer :: starting");
-        create_server(server_handler, bind_address, poison_receiver);
+        create_server::<SIE, SOE, C>(server_handler, bind_address, poison_receiver);
         println!("TCPServer :: finished");
         12
     });
@@ -60,8 +62,9 @@ pub fn run_server<SIE, SOE>(server_handler:ServerEventHandler<SIE, SOE>, bind_ad
     })
 }
 
-pub fn create_server<SIE, SOE>(server_handler:ServerEventHandler<SIE, SOE>, bind_address: SocketAddr, poison_receiver: oneshot::Receiver<u32>) 
-    where SIE : DeserializeOwned + 'static + Clone + Debug, SOE : Serialize + 'static + Clone + Debug {
+
+pub fn create_server<SIE, SOE, C>(server_handler:ServerEventHandler<SIE, SOE>, bind_address: SocketAddr, poison_receiver: oneshot::Receiver<u32>) 
+    where SIE : DeserializeOwned + 'static + Clone + Debug, SOE : Serialize + 'static + Clone + Debug, C: Codec<SIE, SOE> {
     let mut core = Core::new().expect("TCPSERVER A NEW CORE"); // io result
 
     let handle = core.handle();
@@ -83,16 +86,14 @@ pub fn create_server<SIE, SOE>(server_handler:ServerEventHandler<SIE, SOE>, bind
         hhrrrm.sender.send(ServerInboundEvent::ClientConnected { address : addr, client_sender : client_send }).expect("TCPSERVER SEND CLIENTCONNECTED");
         
 
+
         let socket_reader = stream.for_each(move |m| {
             println!("TCPServer :: hey mang, I got a message -> {:?}", m);
 
-            if let Some(as_str) = std::str::from_utf8(&m).ok() {
-                 match serde_json::from_str::<SIE>(as_str) {
-                    Ok(event) => hhrrrm.sender.send(ServerInboundEvent::ClientMessage { address : addr, event : event }).expect("TCPSERVER SEND CLIENTMESSAGE"),
-                    Err(e) => println!("TCPServer :: couldnt deserialize event ... error -> {:?} string -> {} ", e, as_str),
-                 }
+            if let Some(ie) = C::deserialize_incoming(&m) {
+                hhrrrm.sender.send(ServerInboundEvent::ClientMessage { address : addr, event : ie }).expect("TCPSERVER SEND CLIENTMESSAGE");
             } else {
-                println!("TCPServer :: couldnt create utf8 string from frame!!");
+                println!("TCPServer :: couldnt deserialize incoming message");
             }
 
             Ok(())
@@ -100,8 +101,8 @@ pub fn create_server<SIE, SOE>(server_handler:ServerEventHandler<SIE, SOE>, bind
 
         let socket_writer = client_receive.fold(sink, |sink, msg| {
             println!("TCPServer :: writing a client event!");
-            let msg = serde_json::to_string(&msg).expect("TCPSERVER DESER INBOUND EVENT");
-            let some_bytes : BytesMut = BytesMut::from(msg);
+            let mut some_bytes : BytesMut = BytesMut::new();
+            C::serialize_outgoing(&msg, &mut some_bytes);
             let amt = sink.send(some_bytes);
             amt.map_err(|_| ())
         });

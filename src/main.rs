@@ -21,6 +21,7 @@ use std::net::SocketAddr;
 
 use psyk::client::ClientEventHandler;
 use psyk::server::ServerEventHandler;
+use psyk::JsonCodec;
 
 use std::{thread, time};
 use std::thread::JoinHandle;
@@ -42,6 +43,7 @@ enum MathToClientEvent {
 }
 
 
+
 fn main() {
     let addr = env::args().nth(1).unwrap_or("127.0.0.1:8080".to_string());
     let addr : SocketAddr = addr.parse().expect("A valid server bind address");
@@ -49,7 +51,7 @@ fn main() {
     let (server_event_handler, server_join_handle) = spawn_math_server();
 
     println!("Main :: Server Event Handler Started");
-    let server_poison_pill = psyk::server::run_server(server_event_handler.clone(), addr).expect("A SERVER POISON PILL");
+    let server_poison_pill = psyk::server::run_server::<_, _, JsonCodec>(server_event_handler.clone(), addr).expect("A SERVER POISON PILL");
 
     println!("Main :: Server TCPListener Started");
     thread::sleep(time::Duration::from_millis(100));
@@ -98,7 +100,7 @@ fn spawn_math_client(server_address: SocketAddr, n: u32) -> (ClientEventHandler<
     let join_handle = thread::spawn(move || {
         println!("Client {} :: connecting to {:?}", n, server_address);
         // attempt to connect to server
-        let client_poison_pill = psyk::client::run_client(client_event_handler.clone(), server_address).expect("MATH CLIENT EXPECTS A CLIENT POISON PILL");
+        let client_poison_pill = psyk::client::run_client::<_, _, JsonCodec>(client_event_handler.clone(), server_address).expect("MATH CLIENT EXPECTS A CLIENT POISON PILL");
 
         let mut to_server : Option<psyk::client::ChannelToServer<MathToServerEvent>> = None;
 
