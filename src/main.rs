@@ -54,7 +54,7 @@ fn main() {
     println!("Main :: Server TCPListener Started");
     thread::sleep(time::Duration::from_millis(100));
 
-    let client_count = 10;
+    let client_count = 1;
     let client_handles : Vec<_> = (0..client_count).map(|n|{ 
         spawn_math_client(addr, n)
     }).collect();
@@ -62,6 +62,8 @@ fn main() {
     // let (client_event_handler, client_join_handler) = ;
     println!("Main :: Client Event Handler Started");
 
+    thread::sleep(time::Duration::from_millis(100));
+    let res = server_poison_pill.shutdown();
 
     println!("Main :: Waiting for Client to shutdown");
 
@@ -74,7 +76,7 @@ fn main() {
 
     println!("Main :: Clients shutdown, posioning server");
 
-    let res = server_poison_pill.shutdown();
+    
 
     println!("Main :: ok we even shutdown -> {:?}", res);
 }
@@ -119,7 +121,7 @@ fn spawn_math_client(server_address: SocketAddr, n: u32) -> (ClientEventHandler<
                         }, // that is NOT good enough ..
                         ServerMessage { address, event } => {
                             println!("Client {} :: received event {:?} from server @ {:?}", n, event, address);
-                            break;
+                            // break;
                         },
                         ServerDisconnected { address } => {
                             println!("Client {} :: server disconnected @ {:?}", n, address);
