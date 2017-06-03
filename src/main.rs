@@ -19,9 +19,10 @@ use std::env;
 
 use std::net::SocketAddr;
 
+use psyk::client::ClientEventHandler;
 use psyk::server::ServerEventHandler;
 
-use std::thread;
+use std::{thread, time};
 use std::thread::JoinHandle;
 
 use std::sync::mpsc;
@@ -45,18 +46,28 @@ fn main() {
     let addr = env::args().nth(1).unwrap_or("127.0.0.1:8080".to_string());
     let addr : SocketAddr = addr.parse().unwrap();
 
-    let (server_event_handler, join_handle) = spawn_math_server();
+    let (server_event_handler, server_join_handle) = spawn_math_server();
+
+    println!("Main :: Server Event Handler Started");
+    let server_poison_pill = psyk::server::run_server(server_event_handler.clone(), addr).unwrap();
+
+    println!("Main :: Server TCPListener Started");
+    thread::sleep(time::Duration::from_millis(100));
+
+    let (client_event_handler, client_join_handler) = spawn_math_client(addr);
+    println!("Main :: Client Event Handler Started");
+
+
+    println!("Waiting for Client to shutdown");
+    let client_res = client_join_handler.join();
 
     // let server = server_event_handler.clone();
 
+    let res = server_poison_pill.shutdown();
+    
 
-    let poison_pill = psyk::server::run_server(server_event_handler.clone(), addr).unwrap();
-
-    println!("Main :: alright, server started, sending the damn thing");
-
-    server_event_handler.sender.send(psyk::server::ServerInboundEvent::ClientMessage { address: addr, event : MathToServerEvent::Get }).unwrap();
-
-    let res = poison_pill.shutdown();
+    
+    
 
     println!("Main :: ok we even shutdown -> {:?}", res);
 
@@ -69,13 +80,77 @@ fn main() {
 
 }
 
-fn spawn_math_client() {
+fn spawn_math_client(server_address: SocketAddr) -> (ClientEventHandler<MathToClientEvent, MathToServerEvent>, JoinHandle<u32>) {
+    use psyk::client::ClientInboundEvent::*;
+
+    let (sender, receiver) = mpsc::channel();
+
+    // state for server
+
+    let client_event_handler = ClientEventHandler {
+        sender : sender,
+    };
+
+    let handler_copy = client_event_handler.clone();
+
 
     let join_handle = thread::spawn(move || {
+        println!("Client :: connecting to {:?}", server_address);
+        // attempt to connect to server
+        let client_poison_pill = psyk::client::run_client(client_event_handler.clone(), server_address).unwrap();
+
+        let mut to_server : Option<psyk::client::ChannelToServer<MathToServerEvent>> = None;
+
+        loop {
+            match receiver.recv() {
+                Ok(event) => {
+                    match event {
+                        FailedToConnect { address } => {
+                            println!("Client :: failed to connect to {:?}", address);
+                            break;
+                        },
+                        ServerConnected { address, channel_to_server } => {
+                            println!("Client :: connected to server @ {:?}", address);
+                            // psyk::client::ClientOutboundEvent::SendMessage { event: MathToServerEvent::Get }
+                            channel_to_server.sender.send(MathToServerEvent::Get);
+
+                            println!("Client :: Sending get");
+                            to_server = Some(channel_to_server)
+                            
+                        }, // that is NOT good enough ..
+                        ServerMessage { address, event } => {
+                            println!("Client :: received event {:?} from server @ {:?}", event, address);
+                            break;
+                        },
+                        ServerDisconnected { address } => {
+                            println!("Client :: server disconnected @ {:?}", address);
+                            break;
+                        },
+                        ClientFinished { address } => {
+                            println!("Client :: finished event");
+                            break;
+                        }
+                    }
+
+                },
+                Err(e) => {
+                    println!("Client :: problem receiving event :-( {:?}", e);
+                    break;
+                },
+            }
+        }
+
+        println!("Client :: Done poisoning TCPClient");
+
+        let client_poison_Result = client_poison_pill.shutdown();
+        
+
+        println!("Client :: Poisoned done");
 
         45
     });
 
+    (handler_copy, join_handle)
 }
 
 fn spawn_math_server() -> (ServerEventHandler<MathToServerEvent, MathToClientEvent>, JoinHandle<u32>) {

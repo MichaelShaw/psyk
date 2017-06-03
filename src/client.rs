@@ -98,7 +98,7 @@ fn connect_client_to<CIE, COE>(client_handler: ClientEventHandler<CIE, COE>, ser
         });
 
         let socket_writer = to_server_rx.fold(sink, |sink, msg| {
-            println!("TCPClient :: writing an event for the server!");
+            println!("TCPClient :: writing an outbound event for the server!");
             let msg = serde_json::to_string(&msg).unwrap();
             let some_bytes : BytesMut = BytesMut::from(msg);
             let amt = sink.send(some_bytes);
