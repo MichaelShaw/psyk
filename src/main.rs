@@ -10,7 +10,7 @@ extern crate serde_derive;
 
 extern crate bytes;
 extern crate futures;
-#[macro_use]
+// #[macro_use]
 extern crate tokio_core;
 extern crate tokio_io;
 
@@ -45,20 +45,20 @@ fn main() {
     let addr = env::args().nth(1).unwrap_or("127.0.0.1:8080".to_string());
     let addr : SocketAddr = addr.parse().unwrap();
 
-    let (server_handle, join_handle) = spawn_math_server();
+    let (server_event_handler, join_handle) = spawn_math_server();
 
-    let server = server_handle.clone();
+    // let server = server_event_handler.clone();
 
 
-    let poison_pill = psyk::server::run_server(server_handle, addr).unwrap();
+    let poison_pill = psyk::server::run_server(server_event_handler.clone(), addr).unwrap();
 
-    println!("alright, server started, sending the damn thing");
+    println!("Main :: alright, server started, sending the damn thing");
 
-    server.sender.send(psyk::server::ServerInboundEvent::ClientMessage { address: addr, event : MathToServerEvent::Get }).unwrap();
+    server_event_handler.sender.send(psyk::server::ServerInboundEvent::ClientMessage { address: addr, event : MathToServerEvent::Get }).unwrap();
 
     let res = poison_pill.shutdown();
 
-    println!("ok we even shutdown -> {:?}", res);
+    println!("Main :: ok we even shutdown -> {:?}", res);
 
 
     // let (client_tx, client_rx) = mpsc::channel();
