@@ -40,6 +40,7 @@ enum MathToClientEvent {
     Val(u32),
 }
 
+
 fn main() {
     let addr = env::args().nth(1).unwrap_or("127.0.0.1:8080".to_string());
     let addr : SocketAddr = addr.parse().unwrap();
@@ -47,7 +48,6 @@ fn main() {
     let (server_handle, join_handle) = spawn_math_server();
 
     let server = server_handle.clone();
-
 
 
     let poison_pill = psyk::server::run_server(server_handle, addr).unwrap();
@@ -61,15 +61,15 @@ fn main() {
     println!("ok we even shutdown -> {:?}", res);
 
 
-    let (client_tx, client_rx) = mpsc::channel();
+    // let (client_tx, client_rx) = mpsc::channel();
 
-    let (poison_pill, server_tx) = psyk::client::run_client::<MathToServerEvent, MathToClientEvent>(client_tx, addr).unwrap();
+    // let (poison_pill, server_tx) = psyk::client::run_client::(client_tx, addr).unwrap();
 
 
 
 }
 
-fn spawn_math_client(client_rx : mpsc::Receiver<psyk::client::ClientInboundEvent<MathToClientEvent>>) {
+fn spawn_math_client() {
 
     let join_handle = thread::spawn(move || {
 
@@ -101,6 +101,10 @@ fn spawn_math_server() -> (ServerEventHandler<MathToServerEvent, MathToClientEve
                             println!("Server :: failure to bind on address -> {:?}", address);
                             break;
                         },
+                        ServerFinished => {
+                            println!("Server :: server process finished");
+                            break;
+                        }
                         ClientConnected { address, client_sender } => {
                             println!("Server :: client @ {:?} connected :D", address);
                             clients.insert(address, client_sender);
@@ -129,7 +133,7 @@ fn spawn_math_server() -> (ServerEventHandler<MathToServerEvent, MathToClientEve
                     }
                 },
                 Err(e) => {
-                    println!("math server problem receiving event :-( {:?}", e);
+                    println!("Server :: problem receiving event :-( {:?}", e);
                     break;
                 },
             }
@@ -138,7 +142,7 @@ fn spawn_math_server() -> (ServerEventHandler<MathToServerEvent, MathToClientEve
   
        
 
-        println!("math server done");
+        println!("Server :: math done");
 
 
         32
