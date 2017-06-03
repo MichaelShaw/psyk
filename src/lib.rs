@@ -1,12 +1,14 @@
 
 
 extern crate serde;
-extern crate serde_json;
+
 // #[macro_use]
 // extern crate serde_derive;
 
-
 extern crate bytes;
+
+extern crate serde_json;
+extern crate bincode;
 
 extern crate futures;
 // #[macro_use]
@@ -69,7 +71,7 @@ pub trait Codec<IE, OE> where OE : Serialize, IE : DeserializeOwned {
 pub struct JsonCodec;
 impl<IE, OE> Codec<IE, OE> for JsonCodec where OE : Serialize, IE : DeserializeOwned {
     fn serialize_outgoing(oe: &OE, bytes: &mut bytes::BytesMut) {
-        let string = serde_json::to_string(&oe).expect("JsonCodec :: TCPSERVER DESER INBOUND EVENT");
+        let string = serde_json::to_string(&oe).expect("JsonCodec :: SERIALIZE THAT OUTGOING");
         bytes.put(string);
     }
 
@@ -88,3 +90,18 @@ impl<IE, OE> Codec<IE, OE> for JsonCodec where OE : Serialize, IE : DeserializeO
     }
 }
 
+pub struct BincodeCodec;
+impl<IE, OE> Codec<IE, OE> for BincodeCodec where OE : Serialize, IE : DeserializeOwned {
+    fn serialize_outgoing(oe: &OE, bytes: &mut bytes::BytesMut) {
+         let bb = bincode::serialize(oe, bincode::Infinite).expect("BincodeCodec :: SERIALIZE THAT OUTGOING");
+         bytes.put(bb);
+    }
+
+    fn deserialize_incoming(bytes: &bytes::BytesMut) -> Option<IE> {
+        if let Some(event) = bincode::deserialize::<IE>(bytes).ok() {
+            Some(event)
+        } else {
+            None
+        }
+    }
+}

@@ -77,6 +77,8 @@ fn connect_client_to<CIE, COE, C>(client_handler: ClientEventHandler<CIE, COE>, 
 
 
         let socket_reader = stream.for_each(move |m| {
+            println!("TCPClient :: hey mang, I got a message -> {:?}", m);
+            
             if let Some(ie) = C::deserialize_incoming(&m) {
                 println!("TCPClient :: received event {:?}", ie);
                 client_handler.sender.send(ClientInboundEvent::ServerMessage { address: server_address, event : ie }).expect("TCPCLIENT SENDS SERVERMESSAGE");
