@@ -25,9 +25,9 @@ pub struct ChannelToServer<COE> { // <SE, CE>
 
 #[derive(Debug, Clone)]
 pub enum ClientInboundEvent<CIE> {
-    ServerConnected,
+    ServerConnected { address: SocketAddr },
     ServerMessage { event: CIE },
-    ServerDisconnected,
+    ServerDisconnected { address: SocketAddr },
 }
 
 pub fn run_client<COE, CIE>(client_sender: Sender<ClientInboundEvent<CIE>>, server_address:SocketAddr) -> PsykResult<(PoisonPill, UnboundedSender<COE>)> 
@@ -63,7 +63,7 @@ fn connect_client_to<COE, CIE>(client_sender: Sender<ClientInboundEvent<CIE>>, s
     let client = tcp.and_then(move |stream| {
         let (sink, stream) = bind_transport(stream).split();
 
-        client_sender.send(ClientInboundEvent::ServerConnected).unwrap();
+        client_sender.send(ClientInboundEvent::ServerConnected { address: server_address }).unwrap();
 
         let client_copy = client_sender.clone();
 
@@ -94,7 +94,7 @@ fn connect_client_to<COE, CIE>(client_sender: Sender<ClientInboundEvent<CIE>>, s
         handle.spawn(connection.then(move |_| {
             // connections.borrow_mut().remove(&addr);
             println!("Connection {} close to server.", server_address);
-            client_copy.send(ClientInboundEvent::ServerDisconnected).unwrap();
+            client_copy.send(ClientInboundEvent::ServerDisconnected { address: server_address } ).unwrap();
             Ok(())
         }));
 

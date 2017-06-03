@@ -27,21 +27,24 @@ use bytes::{BytesMut};
 
 // we could in theory hand one of these directly to the client ...
 #[derive(Clone)]
-pub struct ServerHandle<SIE, SOE> {
+pub struct ServerEventHandler<SIE, SOE> { // this is a "logical" handle for the server loop
     pub sender: std::sync::mpsc::Sender<ServerInboundEvent<SIE, SOE>>, // how the tcp server sends event to the server loop
 }
 
 
 #[derive(Debug, Clone)]
 pub enum ServerInboundEvent<SIE, SOE> {
+    FailureToBind { address : SocketAddr },
     ClientConnected { address : SocketAddr, client_sender : UnboundedSender<SOE> },
     ClientMessage { address: SocketAddr, event: SIE },
     ClientDisconnected { address : SocketAddr },
 }
 
-pub fn run_server<SIE, SOE>(server_handle:ServerHandle<SIE, SOE>, bind_address: SocketAddr) -> PsykResult<PoisonPill>
+pub fn run_server<SIE, SOE>(server_handle:ServerEventHandler<SIE, SOE>, bind_address: SocketAddr) -> PsykResult<PoisonPill>
      where SIE : DeserializeOwned + Send + Clone + 'static, SOE : Serialize + Send + Clone + 'static { // spawns a server and returns a poison pill handle ... that can be used to terminate the server
     let (poison_sender, poison_receiver) = oneshot::channel();
+
+    // what do we do if we can't bind :-/ ... send a failure to bind event
     
     let join_handle = thread::spawn(move || {
         println!("tcp server starting");
@@ -56,7 +59,7 @@ pub fn run_server<SIE, SOE>(server_handle:ServerHandle<SIE, SOE>, bind_address: 
     })
 }
 
-pub fn create_server<SIE, SOE>(server_handle:ServerHandle<SIE, SOE>, bind_address: SocketAddr, poison_receiver: oneshot::Receiver<u32>) 
+pub fn create_server<SIE, SOE>(server_handle:ServerEventHandler<SIE, SOE>, bind_address: SocketAddr, poison_receiver: oneshot::Receiver<u32>) 
     where SIE : DeserializeOwned + 'static + Clone, SOE : Serialize + 'static + Clone {
     let mut core = Core::new().unwrap();
 

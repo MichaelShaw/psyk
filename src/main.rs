@@ -16,9 +16,10 @@ extern crate tokio_io;
 
 use std::env;
 
+
 use std::net::SocketAddr;
 
-use psyk::server::ServerHandle;
+use psyk::server::ServerEventHandler;
 
 use std::thread;
 use std::thread::JoinHandle;
@@ -26,7 +27,7 @@ use std::thread::JoinHandle;
 use std::sync::mpsc;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-enum MathServerEvent {
+enum MathToServerEvent {
     Get,
     Add(u32),
     Sub(u32),
@@ -35,7 +36,7 @@ enum MathServerEvent {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)] 
-enum MathClientEvent {
+enum MathToClientEvent {
     Val(u32),
 }
 
@@ -53,7 +54,7 @@ fn main() {
 
     println!("alright, server started, sending the damn thing");
 
-    server.sender.send(psyk::server::ServerInboundEvent::ClientMessage { address: addr, event : MathServerEvent::Get }).unwrap();
+    server.sender.send(psyk::server::ServerInboundEvent::ClientMessage { address: addr, event : MathToServerEvent::Get }).unwrap();
 
     let res = poison_pill.shutdown();
 
@@ -62,13 +63,13 @@ fn main() {
 
     let (client_tx, client_rx) = mpsc::channel();
 
-    let (poison_pill, server_tx) = psyk::client::run_client::<MathServerEvent, MathClientEvent>(client_tx, addr).unwrap();
+    let (poison_pill, server_tx) = psyk::client::run_client::<MathToServerEvent, MathToClientEvent>(client_tx, addr).unwrap();
 
 
 
 }
 
-fn spawn_math_client(client_rx : mpsc::Receiver<psyk::client::ClientInboundEvent<MathClientEvent>>) {
+fn spawn_math_client(client_rx : mpsc::Receiver<psyk::client::ClientInboundEvent<MathToClientEvent>>) {
 
     let join_handle = thread::spawn(move || {
 
@@ -77,7 +78,7 @@ fn spawn_math_client(client_rx : mpsc::Receiver<psyk::client::ClientInboundEvent
 
 }
 
-fn spawn_math_server() -> (ServerHandle<MathServerEvent, MathClientEvent>, JoinHandle<u32>) {
+fn spawn_math_server() -> (ServerEventHandler<MathToServerEvent, MathToClientEvent>, JoinHandle<u32>) {
     use std::collections::HashMap;
     
     let (sender, receiver) = mpsc::channel();
@@ -85,23 +86,27 @@ fn spawn_math_server() -> (ServerHandle<MathServerEvent, MathClientEvent>, JoinH
     let join_handle = thread::spawn(move || {
         let mut val = 0_u32;
 
-        println!("math server entering main loop");
+        println!("Server :: math server entering main loop");
 
         let mut clients = HashMap::new();
 
         use psyk::server::ServerInboundEvent::*;
-        use MathServerEvent::*;
+        use MathToServerEvent::*;
 
         loop {
             match receiver.recv() {
                 Ok(event) => {
                     match event {
+                        FailureToBind { address } => {
+                            println!("Server :: failure to bind on address -> {:?}", address);
+                            break;
+                        },
                         ClientConnected { address, client_sender } => {
-                            println!("client connected :D");
+                            println!("Server :: client @ {:?} connected :D", address);
                             clients.insert(address, client_sender);
                         },
                         ClientMessage { address, event } => {
-                            println!("client message -> {:?}", event);
+                            println!("Server :: received client message -> {:?} from {:?}", event, address);
                             match event {
                                 Get => (),
                                 Add(n) => val += n,
@@ -111,19 +116,22 @@ fn spawn_math_server() -> (ServerHandle<MathServerEvent, MathClientEvent>, JoinH
                             }
 
                             if let Some(sender) = clients.get(&address) {
-                                println!("sending current value {} to client {:?}", val, address);
-                                sender.send(MathClientEvent::Val(val)).unwrap();
+                                println!("Server :: sending current value {} to client {:?}", val, address);
+                                sender.send(MathToClientEvent::Val(val)).unwrap();
                             } else {
-                                println!("we're not aware of client {:?}", address);
+                                println!("Server :: we're not aware of client {:?}", address);
                             }
                         },
                         ClientDisconnected { address } => {
-                            println!("client disconnected");
+                            println!("Server :: client disconnected {:?}", address);
                             clients.remove(&address);
                         },
                     }
                 },
-                Err(e) => println!("math server problem receiving event :-( {:?}", e),
+                Err(e) => {
+                    println!("math server problem receiving event :-( {:?}", e);
+                    break;
+                },
             }
         }
         //     println!("math server got message -> {:?}", event);
@@ -136,7 +144,7 @@ fn spawn_math_server() -> (ServerHandle<MathServerEvent, MathClientEvent>, JoinH
         32
     });
 
-    (ServerHandle {
+    (ServerEventHandler {
         sender : sender,
     }, join_handle)
 }
