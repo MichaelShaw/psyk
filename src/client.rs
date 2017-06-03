@@ -19,6 +19,8 @@ use std::thread;
 
 use bytes::{BytesMut};
 
+use codec::Codec;
+
 #[derive(Clone)]
 pub struct ClientEventHandler<CIE, COE> { // this is a "logical" handle for the server loop
     pub sender: Sender<ClientInboundEvent<CIE, COE>>, // how the tcp server sends event to the server loop

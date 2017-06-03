@@ -27,6 +27,7 @@ use std::thread::JoinHandle;
 
 use std::sync::mpsc;
 
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 enum MathToServerEvent {
     Get,
@@ -41,7 +42,7 @@ enum MathToClientEvent {
     Val(u32),
 }
 
-type MyCodec = psyk::BincodeCodec;
+type MyCodec = psyk::codec::BincodeCodec;
 
 
 

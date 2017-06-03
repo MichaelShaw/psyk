@@ -25,6 +25,8 @@ use std::thread;
 
 use bytes::{BytesMut};
 
+use codec::Codec;
+
 
 // we could in theory hand one of these directly to the client ...
 #[derive(Clone)]
