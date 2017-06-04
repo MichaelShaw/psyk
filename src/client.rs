@@ -19,7 +19,7 @@ use std::thread;
 
 use bytes::{BytesMut};
 
-use codec::Codec;
+use codec::AsymmetricCodec;
 
 #[derive(Clone)]
 pub struct ClientEventHandler<CIE, COE> { // this is a "logical" handle for the server loop
@@ -42,7 +42,7 @@ pub enum ClientInboundEvent<CIE, COE> {
 }
 
 pub fn run_client<CIE, COE, C>(client_handler: ClientEventHandler<CIE, COE>, server_address:SocketAddr) -> PsykResult<PoisonPill> 
-        where CIE : DeserializeOwned + Send + Clone + Debug + 'static, COE : Serialize + Send + Clone + Debug + 'static, C: Codec<CIE, COE> {
+        where CIE : DeserializeOwned + Send + Clone + Debug + 'static, COE : Serialize + Send + Clone + Debug + 'static, C: AsymmetricCodec<CIE, COE> {
     let (poison_sender, poison_receiver) = oneshot::channel();
 
     let join_handle = thread::spawn(move || {
@@ -61,7 +61,7 @@ pub fn run_client<CIE, COE, C>(client_handler: ClientEventHandler<CIE, COE>, ser
 }
 
 fn connect_client_to<CIE, COE, C>(client_handler: ClientEventHandler<CIE, COE>, server_address:SocketAddr, poison_receiver: oneshot::Receiver<u32>) 
-        where CIE : DeserializeOwned + Send + Clone + Debug + 'static, COE : Serialize + Send + Clone + Debug + 'static, C: Codec<CIE, COE> {
+        where CIE : DeserializeOwned + Send + Clone + Debug + 'static, COE : Serialize + Send + Clone + Debug + 'static, C: AsymmetricCodec<CIE, COE> {
     let mut core = Core::new().expect("TCPCLIENT A NEW CORE");
     let handle = core.handle();
     let tcp = TcpStream::connect(&server_address, &handle);
@@ -101,6 +101,7 @@ fn connect_client_to<CIE, COE, C>(client_handler: ClientEventHandler<CIE, COE>, 
                 Ok(()) => (),
                 Err(e) => println!("TCPClient :: couldnt serialize event -> {:?}", e),
             }
+            
             let amt = sink.send(some_bytes);
 
             amt.map_err(|_| ())

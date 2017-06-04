@@ -25,7 +25,7 @@ use std::thread;
 
 use bytes::{BytesMut};
 
-use codec::Codec;
+use codec::AsymmetricCodec;
 
 
 // we could in theory hand one of these directly to the client ...
@@ -46,7 +46,7 @@ pub enum ServerInboundEvent<SIE, SOE> {
 
 
 pub fn run_server<SIE, SOE, C>(server_handler:ServerEventHandler<SIE, SOE>, bind_address: SocketAddr) -> PsykResult<PoisonPill>
-     where SIE : DeserializeOwned + Send + Clone + Debug + 'static, SOE : Serialize + Send + Clone + Debug + 'static, C: Codec<SIE, SOE> { // spawns a server and returns a poison pill handle ... that can be used to terminate the server
+     where SIE : DeserializeOwned + Send + Clone + Debug + 'static, SOE : Serialize + Send + Clone + Debug + 'static, C: AsymmetricCodec<SIE, SOE> { // spawns a server and returns a poison pill handle ... that can be used to terminate the server
     let (poison_sender, poison_receiver) = oneshot::channel();
 
 
@@ -67,7 +67,7 @@ pub fn run_server<SIE, SOE, C>(server_handler:ServerEventHandler<SIE, SOE>, bind
 
 
 pub fn create_server<SIE, SOE, C>(server_handler:ServerEventHandler<SIE, SOE>, bind_address: SocketAddr, poison_receiver: oneshot::Receiver<u32>) 
-    where SIE : DeserializeOwned + 'static + Clone + Debug, SOE : Serialize + 'static + Clone + Debug, C: Codec<SIE, SOE> {
+    where SIE : DeserializeOwned + 'static + Clone + Debug, SOE : Serialize + 'static + Clone + Debug, C: AsymmetricCodec<SIE, SOE> {
     let mut core = Core::new().expect("TCPSERVER A NEW CORE"); // io result
 
     let handle = core.handle();

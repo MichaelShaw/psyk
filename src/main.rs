@@ -5,7 +5,7 @@ extern crate serde;
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
-
+extern crate aphid;
 
 
 extern crate bytes;
@@ -42,7 +42,7 @@ enum MathToClientEvent {
     Val(u32),
 }
 
-type MyCodec = psyk::codec::BincodeCodec;
+type MyCodec = aphid::codec::BincodeCodec;
 
 
 

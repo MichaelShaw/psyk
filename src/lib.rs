@@ -1,5 +1,5 @@
 
-
+extern crate aphid;
 extern crate serde;
 
 // #[macro_use]
