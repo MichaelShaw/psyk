@@ -44,6 +44,7 @@ pub enum ServerInboundEvent<SIE, SOE> {
     ServerFinished { address: SocketAddr },
 }
 
+
 pub fn run_server<SIE, SOE, C>(server_handler:ServerEventHandler<SIE, SOE>, bind_address: SocketAddr) -> PsykResult<PoisonPill>
      where SIE : DeserializeOwned + Send + Clone + Debug + 'static, SOE : Serialize + Send + Clone + Debug + 'static, C: Codec<SIE, SOE> { // spawns a server and returns a poison pill handle ... that can be used to terminate the server
     let (poison_sender, poison_receiver) = oneshot::channel();
@@ -87,25 +88,28 @@ pub fn create_server<SIE, SOE, C>(server_handler:ServerEventHandler<SIE, SOE>, b
         // use the raw send
         hhrrrm.sender.send(ServerInboundEvent::ClientConnected { address : addr, client_sender : client_send }).expect("TCPSERVER SEND CLIENTCONNECTED");
         
-
-
         let socket_reader = stream.for_each(move |m| {
             println!("TCPServer :: hey mang, I got a message -> {:?}", m);
 
-            if let Some(ie) = C::deserialize_incoming(&m) {
-                hhrrrm.sender.send(ServerInboundEvent::ClientMessage { address : addr, event : ie }).expect("TCPSERVER SEND CLIENTMESSAGE");
-            } else {
-                println!("TCPServer :: couldnt deserialize incoming message");
+            match C::deserialize_incoming(&m) {
+                Ok(ie) => {
+                    println!("TCPServer :: received incoming message -> {:?}", ie);
+                    hhrrrm.sender.send(ServerInboundEvent::ClientMessage { address : addr, event : ie }).expect("TCPSERVER SEND CLIENTMESSAGE");
+                },
+                Err(e) => println!("TCPServer :: couldnt deserialize incoming message -> {:?}", e),
             }
 
             Ok(())
         }); 
 
         let socket_writer = client_receive.fold(sink, |sink, msg| {
-            println!("TCPServer :: writing a client event!");
+            println!("TCPServer :: writing an outbound event to the client -> {:?}", msg);
             let mut some_bytes : BytesMut = BytesMut::new();
-            C::serialize_outgoing(&msg, &mut some_bytes);
-            let amt = sink.send(some_bytes);
+            match C::serialize_outgoing(&msg, &mut some_bytes) {
+                Ok(()) => (),
+                Err(e) => println!("TCPServer :: couldnt serialize event -> {:?}", e),
+            }
+            let amt = sink.send(some_bytes); // should only do this on happy path
             amt.map_err(|_| ())
         });
 

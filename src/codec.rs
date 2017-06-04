@@ -10,46 +10,68 @@ use bytes::BufMut;
 
 use std::str;
 
+#[derive(Debug)]
+pub enum CodecError {
+    CouldntCreateString(str::Utf8Error),
+    BinCodeError(bincode::Error), // Box<bincode::ErrorKind>
+    JsonError(serde_json::error::Error),
+}
+
 // this should be fallible with proper error results ... ... gotta unity various stuff :-/
 pub trait Codec<IE, OE> where OE : Serialize, IE : DeserializeOwned {
-    fn serialize_outgoing(oe: &OE, bytes: &mut bytes::BytesMut);
-    fn deserialize_incoming(bytes: &bytes::BytesMut) -> Option<IE>;
+    fn serialize_outgoing(oe: &OE, bytes: &mut bytes::BytesMut) -> Result<(), CodecError>;
+    fn deserialize_incoming(bytes: &bytes::BytesMut) -> Result<IE, CodecError>;
 }
 
 pub struct JsonCodec;
 impl<IE, OE> Codec<IE, OE> for JsonCodec where OE : Serialize, IE : DeserializeOwned {
-    fn serialize_outgoing(oe: &OE, bytes: &mut bytes::BytesMut) {
-        let string = serde_json::to_string(&oe).expect("JsonCodec :: SERIALIZE THAT OUTGOING");
-        bytes.put(string);
+    fn serialize_outgoing(oe: &OE, bytes: &mut bytes::BytesMut) -> Result<(), CodecError> {
+        match serde_json::to_string(&oe) {
+            Ok(string) => {
+                bytes.put(string);
+                Ok(())
+            },
+            Err(e) => {
+                Err(CodecError::JsonError(e))
+            }
+        }
     }
 
-    fn deserialize_incoming(bytes: &bytes::BytesMut) -> Option<IE> {
-        if let Some(as_str) = str::from_utf8(bytes).ok() {
-            match serde_json::from_str::<IE>(as_str) {
-                Ok(incoming_event) => Some(incoming_event),
-                Err(e) => {
-                    println!("JsonCodec :: couldnt deserialize event ... error -> {:?} string -> {} ", e, as_str);
-                    None
-                },
+    fn deserialize_incoming(bytes: &bytes::BytesMut) -> Result<IE, CodecError> {
+        match str::from_utf8(bytes) {
+            Ok(as_str) => {
+                match serde_json::from_str::<IE>(as_str) {
+                    Ok(incoming_event) => Ok(incoming_event),
+                    Err(e) => {
+                        Err(CodecError::JsonError(e))
+                    },
+                }
+            },
+            Err(e) => {
+                Err(CodecError::CouldntCreateString(e))
             }
-        } else {
-            None
         }
     }
 }
 
 pub struct BincodeCodec;
 impl<IE, OE> Codec<IE, OE> for BincodeCodec where OE : Serialize, IE : DeserializeOwned {
-    fn serialize_outgoing(oe: &OE, bytes: &mut bytes::BytesMut) {
-         let bb = bincode::serialize(oe, bincode::Infinite).expect("BincodeCodec :: SERIALIZE THAT OUTGOING");
-         bytes.put(bb);
+    fn serialize_outgoing(oe: &OE, bytes: &mut bytes::BytesMut) -> Result<(), CodecError> {
+        match bincode::serialize(oe, bincode::Infinite) {
+            Ok(bb) => {
+                bytes.put(bb);
+                Ok(())
+            }
+            Err(e) => {
+                Err(CodecError::BinCodeError(e))
+            }
+        }
     }
 
-    fn deserialize_incoming(bytes: &bytes::BytesMut) -> Option<IE> {
-        if let Some(event) = bincode::deserialize::<IE>(bytes).ok() {
-            Some(event)
-        } else {
-            None
+    fn deserialize_incoming(bytes: &bytes::BytesMut) -> Result<IE, CodecError> {
+        match bincode::deserialize::<IE>(bytes) {
+            Ok(event) => Ok(event),
+            Err(e) => Err(CodecError::BinCodeError(e)),
         }
     }
 }

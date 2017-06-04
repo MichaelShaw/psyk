@@ -77,25 +77,30 @@ fn connect_client_to<CIE, COE, C>(client_handler: ClientEventHandler<CIE, COE>, 
         let channel_to_server = ChannelToServer { sender: to_server_tx };
         client_copy.sender.send(ClientInboundEvent::ServerConnected { address: server_address, channel_to_server: channel_to_server }).expect("TCPCLIENT SENDS SERVERCONNECTED");
 
-
         let socket_reader = stream.for_each(move |m| {
             println!("TCPClient :: hey mang, I got a message -> {:?}", m);
-            
-            if let Some(ie) = C::deserialize_incoming(&m) {
-                println!("TCPClient :: received event {:?}", ie);
-                client_handler.sender.send(ClientInboundEvent::ServerMessage { address: server_address, event : ie }).expect("TCPCLIENT SENDS SERVERMESSAGE");
-            } else {
-                println!("TCPClient :: couldnt deser incoming event");
+
+            match C::deserialize_incoming(&m) {
+                Ok(ie) => {
+                    println!("TCPClient :: received event {:?}", ie);
+                    client_handler.sender.send(ClientInboundEvent::ServerMessage { address: server_address, event : ie }).expect("TCPCLIENT SENDS SERVERMESSAGE");
+                },
+                Err(e) => {
+                    println!("TCPClient :: couldnt deser incoming event -> {:?}", e);
+                }
             }
 
             Ok(())
         });
 
         let socket_writer = to_server_rx.fold(sink, |sink, msg| {
-            println!("TCPClient :: writing an outbound event for the server!");
+            println!("TCPClient :: writing an outbound event to the server -> {:?}", msg);
 
             let mut some_bytes : BytesMut = BytesMut::new();
-            C::serialize_outgoing(&msg, &mut some_bytes);
+            match C::serialize_outgoing(&msg, &mut some_bytes) {
+                Ok(()) => (),
+                Err(e) => println!("TCPClient :: couldnt serialize event -> {:?}", e),
+            }
             let amt = sink.send(some_bytes);
 
             amt.map_err(|_| ())
