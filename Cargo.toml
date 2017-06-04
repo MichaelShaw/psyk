@@ -7,7 +7,6 @@ authors = ["Michael Shaw <michaeljshaw@gmail.com>"]
 fnv = "*"
 
 serde = "*"
-serde_derive = "*"
 serde_json = "*"
 bincode = "*"
 
@@ -17,3 +16,6 @@ futures = "0.1"
 bytes = "*"
 
 aphid = { git = "https://github.com/michaelshaw/aphid" }
+
+[dev-dependencies]
+serde_derive = "1.0"

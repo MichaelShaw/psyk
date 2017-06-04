@@ -7,7 +7,6 @@ extern crate serde_json;
 extern crate serde_derive;
 extern crate aphid;
 
-
 extern crate bytes;
 extern crate futures;
 // #[macro_use]
