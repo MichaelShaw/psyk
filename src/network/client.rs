@@ -1,4 +1,3 @@
-use super::*;
 
 use tokio_core::reactor::Core;
 use tokio_core::net::{TcpStream};
@@ -6,10 +5,10 @@ use tokio_core::net::{TcpStream};
 use serde::{Serialize};
 use serde::de::DeserializeOwned;
 
-
 use std::fmt::Debug;
 use std::net::SocketAddr;
 
+use futures;
 use futures::sync::mpsc::{UnboundedSender};
 use futures::sync::oneshot;
 use futures::{Future, Stream, Sink};
@@ -19,7 +18,10 @@ use std::thread;
 
 use bytes::{BytesMut};
 
-use codec::AsymmetricCodec;
+use super::codec::AsymmetricCodec;
+
+use {PsykResult, PoisonPill, bind_transport};
+
 
 #[derive(Clone)]
 pub struct ClientEventHandler<CIE, COE> { // this is a "logical" handle for the server loop

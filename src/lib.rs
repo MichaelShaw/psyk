@@ -2,8 +2,8 @@
 extern crate aphid;
 extern crate serde;
 
-// #[macro_use]
-// extern crate serde_derive;
+#[macro_use]
+extern crate serde_derive;
 
 extern crate bytes;
 
@@ -21,9 +21,10 @@ use tokio_io::{AsyncRead, AsyncWrite};
 use futures::sync::oneshot;
 use std::thread;
 
+pub mod network;
+pub mod event;
 pub mod server;
-pub mod client;
-pub mod codec;
+pub mod game;
 
 use std::io;
 
