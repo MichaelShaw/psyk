@@ -11,7 +11,7 @@ pub mod to_server {
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub enum Payload<GameEvent> {
-        Auth,
+        Auth, // some secret or something ...
         ListGames,
         NewGame,
         JoinGame(GameId),
